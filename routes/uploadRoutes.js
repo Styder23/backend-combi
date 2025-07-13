@@ -6,15 +6,6 @@ const fs = require("fs");
 const router = express.Router();
 const db = require("./../db");
 
-// Conexión a la base de datos
-db.connect((err) => {
-  if (err) {
-    console.error("Error al conectar a la base de datos:", err);
-    return;
-  }
-  console.log("Conexión exitosa a la base de datos MySQL.");
-});
-
 // Configuración de Multer para guardar las imágenes
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
