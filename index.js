@@ -21,15 +21,6 @@ app.use(cors({
 app.use(bodyParser.json());
 app.use("/api", uploadRouters);
 
-// Conexión a la base de datos
-db.connect((err) => {
-  if (err) {
-    console.error("Error al conectar a la base de datos:", err);
-    return;
-  }
-  console.log("Conexión exitosa a la base de datos MySQL.");
-});
-
 // RUTAS PARA SUBIR LAS IMAGENES
 app.use(express.json());
 
