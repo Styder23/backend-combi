@@ -19,7 +19,7 @@ app.use(cors({
   methods: ["GET", "POST", "PUT", "DELETE"],
 }));
 app.use(bodyParser.json());
-app.use(uploadRouters);
+app.use("/api", uploadRouters);
 
 // Configuración de la conexión a MySQL
 const db = mysql.createConnection({
@@ -27,7 +27,7 @@ const db = mysql.createConnection({
   user: process.env.DB_USER, // Usuario de MySQL
   password: process.env.DB_PASSWORD, // Contraseña de MySQL
   database: process.env.DB_NAME,
-  port: 3306, // Nombre de la base de datos
+  port: Number(process.env.DB_PORT) || 3306 // Nombre de la base de datos
 });
 
 // Conexión a la base de datos
