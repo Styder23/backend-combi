@@ -1,0 +1,9 @@
+# Evitar subir dependencias, entornos, logs, config sensible
+node_modules/
+.env
+.env.local
+.env.*.local
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
