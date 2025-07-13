@@ -3,17 +3,8 @@ const express = require("express");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
-const mysql = require("mysql2");
 const router = express.Router();
-
-
-// Configuración de la conexión a MySQL
-const db = mysql.createConnection({
-  host: process.env.DB_HOST, // Dirección de tu servidor MySQL
-  user: process.env.DB_USER, // Usuario de MySQL
-  password: process.env.DB_PASSWORD, // Contraseña de MySQL
-  database: process.env.DB_NAME, // Nombre de la base de datos
-});
+const db = require("./../db");
 
 // Conexión a la base de datos
 db.connect((err) => {
@@ -55,27 +46,27 @@ const upload = multer({ storage });
   // Endpoint para subir la foto de un incidente
   router.post("/reportar_incidente", upload.single("foto_incidente"), async (req, res) => {
     try {
-      const {descripcion, latitud, longitud, fkidturno } = req.body;
+      const { descripcion, latitud, longitud, fkidturno } = req.body;
 
-      if (!descripcion || !latitud || !longitud  || !fkidturno || !req.file) {
+      if (!descripcion || !latitud || !longitud || !fkidturno || !req.file) {
         return res.status(400).json({
           success: false,
           message: "Faltan datos requeridos",
         });
       }
 
-      const rutaFoto = req.file.path.replace(/\\/g, '/'); // Normalizar la ruta para la BD
+      const rutaFoto = req.file.path.replace(/\\/g, '/'); // Normalizar ruta para BD
 
       const queryInsertIncidente = `
         INSERT INTO incidentes 
-        (descripcion, latitud, longitud,  hora, foto, fkidturno)
-      VALUES (?, ?, ?, NOW(), ?, ?)
+        (descripcion, latitud, longitud, hora, foto, fkidturno)
+        VALUES (?, ?, ?, NOW(), ?, ?)
       `;
 
-      const [result] = await db.promise().execute(queryInsertIncidente, [
+      const [result] = await db.execute(queryInsertIncidente, [
         descripcion,
         latitud,
-        longitud,        
+        longitud,
         rutaFoto,
         fkidturno,
       ]);
@@ -85,7 +76,7 @@ const upload = multer({ storage });
           success: true,
           message: "Incidente reportado exitosamente",
           idincidente: result.insertId,
-          rutaFoto: rutaFoto // Devolver la ruta para debug
+          rutaFoto
         });
       } else {
         return res.status(500).json({
@@ -98,75 +89,75 @@ const upload = multer({ storage });
       res.status(500).json({
         success: false,
         message: "Error interno del servidor",
-        error: error.message // Agregar el mensaje de error para debug
+        error: error.message
       });
     }
   });
 
-  // Endpoint para subir la foto de perfil
-  router.post("/subir_foto_perfil", upload.single("foto_perfil"), async (req, res) => {
-    try {
-      console.log("=== BACKEND DEBUG ===");
-      console.log("Query params:", req.query);
-      console.log("Body:", req.body);
-      console.log("File:", req.file);
-      
-      const { id } = req.query;
-      console.log("ID extraído:", id);
-  
-      if (!id || !req.file) {
-        console.error("Faltan datos requeridos.", { id, file: !!req.file });
-        return res.status(400).json({
-          success: false,
-          message: "Faltan datos requeridos",
-        });
-      }
+// Endpoint para subir la foto de perfil
+router.post("/subir_foto_perfil", upload.single("foto_perfil"), async (req, res) => {
+  try {
+    console.log("=== BACKEND DEBUG ===");
+    console.log("Query params:", req.query);
+    console.log("Body:", req.body);
+    console.log("File:", req.file);
+    
+    const { id } = req.query;
+    console.log("ID extraído:", id);
 
-      // Verificar si el usuario existe
-      const [userResult] = await db.promise().execute(
-        "SELECT id FROM users WHERE id = ?",
-        [id]
-      );
+    if (!id || !req.file) {
+      console.error("Faltan datos requeridos.", { id, file: !!req.file });
+      return res.status(400).json({
+        success: false,
+        message: "Faltan datos requeridos",
+      });
+    }
 
-      if (userResult.length === 0) {
-        console.error("Usuario no encontrado.");
-        return res.status(404).json({
-          success: false,
-          message: "Usuario no encontrado",
-        });
-      }
+    // Verificar si el usuario existe
+    const [userResult] = await db.execute(
+      "SELECT id FROM users WHERE id = ?",
+      [id]
+    );
 
-      // Guardar ruta normalizada en la base de datos
-      const rutaFoto = req.file.path.replace(/\\/g, '/');
+    if (userResult.length === 0) {
+      console.error("Usuario no encontrado.");
+      return res.status(404).json({
+        success: false,
+        message: "Usuario no encontrado",
+      });
+    }
 
-      const [updateResult] = await db.promise().execute(
-        "UPDATE users SET profile_photo_path = ? WHERE id = ?",
-        [rutaFoto, id]
-      );
+    // Guardar ruta normalizada en la base de datos
+    const rutaFoto = req.file.path.replace(/\\/g, '/');
 
-      if (updateResult.affectedRows === 1) {
-        console.log("Foto de perfil actualizada correctamente:", rutaFoto);
-        return res.json({
-          success: true,
-          message: "Foto de perfil actualizada exitosamente",
-          profile_photo_path: rutaFoto,
-        });
-      } else {
-        console.error("No se pudo actualizar la foto.");
-        return res.status(500).json({
-          success: false,
-          message: "Error al actualizar la foto de perfil",
-        });
-      }
-    } catch (error) {
-      console.error("Error en el backend:", error);
+    const [updateResult] = await db.execute(
+      "UPDATE users SET profile_photo_path = ? WHERE id = ?",
+      [rutaFoto, id]
+    );
+
+    if (updateResult.affectedRows === 1) {
+      console.log("Foto de perfil actualizada correctamente:", rutaFoto);
+      return res.json({
+        success: true,
+        message: "Foto de perfil actualizada exitosamente",
+        profile_photo_path: rutaFoto,
+      });
+    } else {
+      console.error("No se pudo actualizar la foto.");
       return res.status(500).json({
         success: false,
-        message: "Error interno del servidor",
-        error: error.message,
+        message: "Error al actualizar la foto de perfil",
       });
     }
-  });
+  } catch (error) {
+    console.error("Error en el backend:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Error interno del servidor",
+      error: error.message,
+    });
+  }
+});
 
 
 module.exports = router;
