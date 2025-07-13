@@ -148,7 +148,6 @@ router.post("/subir_foto_perfil", upload.single("foto_perfil"), async (req, res)
       error: error.message,
     });
   }
-});
-
+});   
 
 module.exports = router;

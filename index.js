@@ -127,9 +127,7 @@ app.post("/login", async (req, res) => {
   }
 });
 
-
 // Función para verificar un hash de contraseña generado por Laravel
-
 function verifyLaravelHash(plainPassword, hashedPassword) {
   return new Promise((resolve, reject) => {
     // Laravel utiliza $2y$ en sus hashes, pero Node.js bcrypt usa $2a$ o $2b$
@@ -176,7 +174,6 @@ app.post("/cambiar-password", async (req, res) => {
     return res.status(500).json({ message: "Error al cambiar la contraseña." });
   }
 });
-
 
 /*Función para generar un hash de contraseña compatible con Laravel*/
 function generateLaravelHash(plainPassword) {
