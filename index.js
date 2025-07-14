@@ -122,7 +122,7 @@ app.post("/login", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("💥 Error en el endpoint /login:", error);
+    console.error("Error en el endpoint /login:", error);
     return res.status(500).json({ message: "Error interno del servidor al realizar la consulta." });
   }
 });
@@ -170,7 +170,7 @@ app.post("/cambiar-password", async (req, res) => {
     res.status(200).json({ message: "Contraseña actualizada correctamente." });
 
   } catch (err) {
-    console.error("💥 Error en /cambiar-password:", err);
+    console.error("Error en /cambiar-password:", err);
     return res.status(500).json({ message: "Error al cambiar la contraseña." });
   }
 });
@@ -229,12 +229,11 @@ app.get("/turnos", async (req, res) => {
       ORDER BY t.hora ASC
     `;
 
-    // ✅ Usamos pool con .execute directamente
     const [turnos] = await db.execute(query, [id, fechaUTC]);
 
-    console.log("🟡 Fecha solicitada:", req.query.fecha);
-    console.log("🟢 ID del vehículo:", req.query.id);
-    console.log("📦 Turnos obtenidos:", turnos);
+    console.log("Fecha solicitada:", req.query.fecha);
+    console.log("ID del vehículo:", req.query.id);
+    console.log("Turnos obtenidos:", turnos);
 
     if (turnos.length === 0) {
       return res.json({
@@ -250,7 +249,7 @@ app.get("/turnos", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("💥 Error al obtener los turnos:", error);
+    console.error("Error al obtener los turnos:", error);
     res.status(500).json({
       success: false,
       message: "Error al obtener los turnos",
@@ -263,7 +262,7 @@ app.get("/turno-activo", async (req, res) => {
   let connection;
   try {
     const { id } = req.query;
-    console.log("🔍 Buscando turno activo para vehículo:", id);
+    console.log("Buscando turno activo para vehículo:", id);
 
     // 1. Validar ID del vehículo
     if (!id || isNaN(id)) {
@@ -328,7 +327,7 @@ app.get("/turno-activo", async (req, res) => {
       
       // Si el turno tiene más de 1 hora de retraso, marcarlo como DESERTO
       if (diferenciaHoras > 1) {
-        console.log(`⏳ Turno ${turno.id} con ${diferenciaHoras} horas de retraso - Marcando como DESERTO`);
+        console.log(`Turno ${turno.id} con ${diferenciaHoras} horas de retraso - Marcando como DESERTO`);
         turnosADesertar.push(turno.id);
         continue;
       }
@@ -339,7 +338,7 @@ app.get("/turno-activo", async (req, res) => {
       }
     }
 
-    // 8. Actualizar turnos desertados (si los hay)
+    // 8. Actualizar turnos desertados 
     if (turnosADesertar.length > 0) {
       const queryDesertarTurnos = `
         UPDATE turnos 
@@ -376,7 +375,7 @@ app.get("/turno-activo", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("💥 Error en /turno-activo:", error);
+    console.error("Error en /turno-activo:", error);
     res.status(500).json({
       success: false,
       message: "Error al buscar turno activo"
@@ -623,7 +622,7 @@ app.get('/limpiar-turnos', async (req, res) => {
     });
     
   } catch (error) {
-    console.error("💥 Error al limpiar turnos:", error);
+    console.error("Error al limpiar turnos:", error);
     res.status(500).json({
       success: false,
       message: "Error interno al limpiar los turnos"
@@ -636,7 +635,7 @@ app.get("/puntos", async (req, res) => {
   try {
     const { fk_idempresa, idvehiculo } = req.query;
 
-    // ✅ Validación de parámetros
+    // Validación de parámetros
     if (!fk_idempresa || !idvehiculo) {
       return res.status(400).json({
         success: false,
@@ -644,7 +643,6 @@ app.get("/puntos", async (req, res) => {
       });
     }
 
-    // 📄 Consulta SQL
     const sqlQuery = `
       SELECT DISTINCT
         p.id AS id, 
@@ -664,10 +662,10 @@ app.get("/puntos", async (req, res) => {
       ORDER BY p.orden ASC
     `;
 
-    // 📡 Ejecución de la consulta
+    // Ejecución de la consulta
     const [result] = await db.execute(sqlQuery, [fk_idempresa, idvehiculo]);
 
-    // 📤 Respuesta
+    // Respuesta
     if (result.length === 0) {
       return res.status(200).json({
         success: true,
@@ -682,7 +680,7 @@ app.get("/puntos", async (req, res) => {
     });
 
   } catch (err) {
-    console.error("💥 Error al obtener los puntos:", err);
+    console.error("Error al obtener los puntos:", err);
     res.status(500).json({
       success: false,
       error: "Error interno al obtener los puntos de marcado"
@@ -695,7 +693,7 @@ app.post("/calcular-diferencia", async (req, res) => {
   try {
     const { hora_salida_turno, fkidturnohora, hora_marcado } = req.body;
 
-    console.log("📥 Datos recibidos:", { hora_salida_turno, fkidturnohora, hora_marcado });
+    console.log("Datos recibidos:", { hora_salida_turno, fkidturnohora, hora_marcado });
 
     // 1. Validar entrada
     if (!hora_salida_turno || !fkidturnohora || !hora_marcado) {
@@ -706,7 +704,7 @@ app.post("/calcular-diferencia", async (req, res) => {
     }
 
     // 2. Obtener tiempo programado del punto - CAMBIO: db.promise().execute() → db.execute()
-    console.log("🔍 Consultando turno_horas con ID:", fkidturnohora);
+    console.log("Consultando turno_horas con ID:", fkidturnohora);
     
     const [turnoHoraResult] = await db.execute(
       `SELECT tiempo, fkidpunto, p.orden 
@@ -716,10 +714,10 @@ app.post("/calcular-diferencia", async (req, res) => {
       [fkidturnohora]
     );
 
-    console.log("📊 Resultado de consulta:", turnoHoraResult);
+    console.log("Resultado de consulta:", turnoHoraResult);
 
     if (!turnoHoraResult || turnoHoraResult.length === 0) {
-      console.error("❌ No se encontró turno_hora con ID:", fkidturnohora);
+      console.error("No se encontró turno_hora con ID:", fkidturnohora);
       return res.status(404).json({
         success: false,
         message: `No se encontró la programación del punto para turno_hora ID: ${fkidturnohora}`
@@ -727,11 +725,11 @@ app.post("/calcular-diferencia", async (req, res) => {
     }
 
     const { tiempo, fkidpunto, orden } = turnoHoraResult[0];
-    console.log("✅ Datos del punto:", { tiempo, fkidpunto, orden });
+    console.log("Datos del punto:", { tiempo, fkidpunto, orden });
 
     // 3. Validar formato de tiempo
     if (!tiempo || typeof tiempo !== 'string') {
-      console.error("❌ Formato de tiempo inválido:", tiempo);
+      console.error("Formato de tiempo inválido:", tiempo);
       return res.status(400).json({
         success: false,
         message: `Formato de tiempo inválido: ${tiempo}`
@@ -739,12 +737,12 @@ app.post("/calcular-diferencia", async (req, res) => {
     }
 
     // 4. Calcular diferencia - LÓGICA MEJORADA
-    console.log("⏰ Calculando diferencia...");
+    console.log("Calculando diferencia...");
     
     // Verificar formato de tiempo (debe ser HH:MM o HH:MM:SS)
     const tiempoPartes = tiempo.split(':');
     if (tiempoPartes.length < 2) {
-      console.error("❌ Formato de tiempo inválido:", tiempo);
+      console.error("Formato de tiempo inválido:", tiempo);
       return res.status(400).json({
         success: false,
         message: `Formato de tiempo inválido: ${tiempo}. Debe ser HH:MM o HH:MM:SS`
@@ -755,7 +753,7 @@ app.post("/calcular-diferencia", async (req, res) => {
     const minutos = parseInt(tiempoPartes[1]);
     
     if (isNaN(horas) || isNaN(minutos)) {
-      console.error("❌ Error parseando tiempo:", { horas, minutos });
+      console.error("Error parseando tiempo:", { horas, minutos });
       return res.status(400).json({
         success: false,
         message: `Error al parsear tiempo: ${tiempo}`
@@ -763,14 +761,14 @@ app.post("/calcular-diferencia", async (req, res) => {
     }
 
     const totalMinutos = (horas * 60) + minutos;
-    console.log("📊 Tiempo programado en minutos:", totalMinutos);
+    console.log("Tiempo programado en minutos:", totalMinutos);
 
     // Crear objetos moment con validación
     const momentSalida = moment(hora_salida_turno);
     const momentMarcado = moment(hora_marcado);
 
     if (!momentSalida.isValid() || !momentMarcado.isValid()) {
-      console.error("❌ Fechas inválidas:", {
+      console.error("Fechas inválidas:", {
         hora_salida_turno: momentSalida.isValid(),
         hora_marcado: momentMarcado.isValid()
       });
@@ -781,13 +779,13 @@ app.post("/calcular-diferencia", async (req, res) => {
     }
 
     const horaEsperada = momentSalida.add(totalMinutos, 'minutes');
-    console.log("🎯 Hora esperada:", horaEsperada.format('YYYY-MM-DD HH:mm:ss'));
-    console.log("⏱️ Hora marcado:", momentMarcado.format('YYYY-MM-DD HH:mm:ss'));
+    console.log("Hora esperada:", horaEsperada.format('YYYY-MM-DD HH:mm:ss'));
+    console.log("Hora marcado:", momentMarcado.format('YYYY-MM-DD HH:mm:ss'));
     
     // CORRECCIÓN: Invertir el orden del cálculo
     // horaMarcado.diff(horaEsperada) → +: retrasado, -: adelantado
     const diferencia = momentMarcado.diff(horaEsperada, 'minutes');
-    console.log("📊 Diferencia calculada:", diferencia, "minutos");
+    console.log("Diferencia calculada:", diferencia, "minutos");
 
     // 5. Determinar estado más claro
     let estado;
@@ -799,7 +797,7 @@ app.post("/calcular-diferencia", async (req, res) => {
       estado = "A tiempo exacto";
     }
 
-    console.log("✅ Estado final:", estado);
+    console.log("Estado final:", estado);
 
     // 6. Preparar respuesta
     const respuesta = {
@@ -815,11 +813,11 @@ app.post("/calcular-diferencia", async (req, res) => {
       }
     };
 
-    console.log("📤 Enviando respuesta:", respuesta);
+    console.log("Enviando respuesta:", respuesta);
     res.json(respuesta);
     
   } catch (error) {
-    console.error("💥 Error detallado:", error);
+    console.error("Error detallado:", error);
     res.status(500).json({
       success: false,
       message: "Error en el cálculo de diferencia",
@@ -1004,7 +1002,7 @@ app.get('/puntos-turno', async (req, res) => {
   try {
     const { idturno } = req.query;
     
-    console.log("🔍 Buscando puntos para turno:", idturno);
+    console.log("Buscando puntos para turno:", idturno);
     
     if (!idturno || isNaN(idturno)) {
       return res.status(400).json({
@@ -1031,10 +1029,10 @@ app.get('/puntos-turno', async (req, res) => {
     // CAMBIO: db.promise().execute() → db.execute()
     const [puntos] = await db.execute(queryPuntos, [idturno]);
     
-    console.log(`📍 Puntos encontrados para turno ${idturno}:`, puntos.length);
+    console.log(`Puntos encontrados para turno ${idturno}:`, puntos.length);
     
     if (puntos.length === 0) {
-      console.log("⚠️ No se encontraron puntos para este turno");
+      console.log("No se encontraron puntos para este turno");
       return res.json({
         success: false,
         message: "No se encontraron puntos para este turno",
@@ -1054,7 +1052,7 @@ app.get('/puntos-turno', async (req, res) => {
     });
     
   } catch (error) {
-    console.error("💥 Error en /puntos-turno:", error);
+    console.error("Error en /puntos-turno:", error);
     res.status(500).json({
       success: false,
       message: "Error al obtener puntos del turno",
@@ -1131,21 +1129,21 @@ app.post("/omitir_punto", async (req, res) => {
     ]);
 
     if (insertResult.affectedRows === 1) {
-      console.log("✅ Punto omitido registrado correctamente.");
+      console.log("Punto omitido registrado correctamente.");
       return res.json({
         success: true,
         message: "Omisión de punto registrada exitosamente",
         idmarcado: insertResult.insertId,
       });
     } else {
-      console.error("⚠️ No se insertó el registro.");
+      console.error("No se insertó el registro.");
       return res.status(500).json({
         success: false,
         message: "Error al registrar la omisión de punto",
       });
     }
   } catch (error) {
-    console.error("❌ Error al registrar la omisión de punto:", error.stack);
+    console.error("Error al registrar la omisión de punto:", error.stack);
     res.status(500).json({
       success: false,
       message: "Error interno del servidor",
@@ -1164,7 +1162,7 @@ app.post("/finalizar-turno", async (req, res) => {
   try {
     const { idTurno } = req.body;
 
-    console.log("🔚 Finalizando turno:", idTurno);
+    console.log("Finalizando turno:", idTurno);
 
     if (!idTurno) {
       return res.status(400).json({
@@ -1206,7 +1204,7 @@ app.post("/finalizar-turno", async (req, res) => {
       [idTurno]
     );
 
-    console.log("✅ Turno finalizado exitosamente:", idTurno);
+    console.log("Turno finalizado exitosamente:", idTurno);
 
     res.json({
       success: true,
@@ -1218,7 +1216,7 @@ app.post("/finalizar-turno", async (req, res) => {
     });
 
   } catch (error) {
-    console.error("💥 Error al finalizar turno:", error);
+    console.error("Error al finalizar turno:", error);
     res.status(500).json({
       success: false,
       message: "Error interno al finalizar el turno"
