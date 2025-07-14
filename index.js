@@ -272,8 +272,8 @@ app.get("/turno-activo", async (req, res) => {
       });
     }
 
-    // 2. Obtener conexión del pool
-    connection = await pool.getConnection();
+    // 2. Obtener conexión del pool (cambiar 'pool' por 'db')
+    connection = await db.getConnection();
 
     // 3. Consultar todos los turnos del día (no solo pendientes)
     const queryTurnosDelDia = `
@@ -378,7 +378,8 @@ app.get("/turno-activo", async (req, res) => {
     console.error("Error en /turno-activo:", error);
     res.status(500).json({
       success: false,
-      message: "Error al buscar turno activo"
+      message: "Error al buscar turno activo",
+      error: error.message // Agregué esto para debugging
     });
   } finally {
     // 11. Liberar la conexión de vuelta al pool
@@ -402,8 +403,8 @@ app.post("/iniciar-viaje", async (req, res) => {
       });
     }
 
-    // 1. Obtener conexión del pool
-    connection = await pool.getConnection();
+    // 1. Obtener conexión del pool (cambiar 'pool' por 'db')
+    connection = await db.getConnection();
 
     // 2. Obtener información completa del turno
     const queryGetTurno = `
@@ -503,6 +504,7 @@ app.post("/iniciar-viaje", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error interno al iniciar el viaje",
+      error: error.message // Agregué esto para debugging
     });
   } finally {
     // 7. Liberar la conexión de vuelta al pool
@@ -522,8 +524,8 @@ app.get('/viaje-activo', async (req, res) => {
 
   let connection;
   try {
-    // 1. Obtener conexión del pool
-    connection = await pool.getConnection();
+    // 1. Obtener conexión del pool (usar 'db' en lugar de 'pool')
+    connection = await db.getConnection();
 
     // 2. Consultar turno activo
     const [turno] = await connection.query(`
@@ -539,6 +541,7 @@ app.get('/viaje-activo', async (req, res) => {
 
     return res.json({ success: true, viaje_activo: true, turno: turno[0] });
   } catch (err) {
+    console.error('Error en viaje-activo:', err); // Para debugging
     return res.status(500).json({ success: false, message: 'Error al consultar', error: err.message });
   } finally {
     // 3. Liberar la conexión de vuelta al pool
@@ -554,8 +557,8 @@ app.get('/puntos-marcados', async (req, res) => {
 
   let connection;
   try {
-    // 1. Obtener conexión del pool
-    connection = await pool.getConnection();
+    // 1. Obtener conexión del pool (cambiar 'pool' por 'db')
+    connection = await db.getConnection();
 
     // 2. Obtener turno activo
     const [turno] = await connection.query(`
@@ -596,6 +599,7 @@ app.get('/puntos-marcados', async (req, res) => {
 
     res.json({ success: true, puntos: puntosFormateados });
   } catch (err) {
+    console.error('Error en puntos-marcados:', err); // Agregué esto para debugging
     res.status(500).json({ success: false, error: err.message });
   } finally {
     // 5. Liberar la conexión de vuelta al pool
@@ -1094,8 +1098,8 @@ app.post("/omitir_punto", async (req, res) => {
       });
     }
 
-    // 1. Obtener conexión del pool
-    connection = await pool.getConnection();
+    // 1. Obtener conexión del pool (cambiar 'pool' por 'db')
+    connection = await db.getConnection();
 
     // 2. Buscar el ID de turno_hora relacionado con el turno y el punto
     const [turnoHoraResult] = await connection.query(`
@@ -1145,6 +1149,7 @@ app.post("/omitir_punto", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Error interno del servidor",
+      error: error.message // Agregué esto para debugging
     });
   } finally {
     // 4. Liberar la conexión de vuelta al pool
@@ -1169,8 +1174,8 @@ app.post("/finalizar-turno", async (req, res) => {
       });
     }
 
-    // 1. Obtener conexión del pool
-    connection = await pool.getConnection();
+    // 1. Obtener conexión del pool (cambiar 'pool' por 'db')
+    connection = await db.getConnection();
 
     // 2. Verificar que el turno existe y está en estado EN RUTA (2)
     const queryVerificar = `
@@ -1217,7 +1222,8 @@ app.post("/finalizar-turno", async (req, res) => {
     console.error("Error al finalizar turno:", error);
     res.status(500).json({
       success: false,
-      message: "Error interno al finalizar el turno"
+      message: "Error interno al finalizar el turno",
+      error: error.message // Agregué esto para debugging
     });
   } finally {
     // 4. Liberar la conexión de vuelta al pool
@@ -1235,7 +1241,7 @@ app.get("/vista-previa/:idturno", async (req, res) => {
   
   try {
     // 1. Información básica del turno
-    const [infoTurno] = await pool.execute(
+    const [infoTurno] = await db.execute(
       `SELECT 
           t.id,
           u.nombres AS conductor,
@@ -1255,7 +1261,7 @@ app.get("/vista-previa/:idturno", async (req, res) => {
     }
 
     // 2. Puntos marcados
-    const [puntosMarcados] = await pool.execute(
+    const [puntosMarcados] = await db.execute(
       `SELECT 
           m.id AS id_marcado,
           ps.nombre AS punto_marcado,
@@ -1273,7 +1279,7 @@ app.get("/vista-previa/:idturno", async (req, res) => {
     );
 
     // 3. Incidentes
-    const [incidentes] = await pool.execute(
+    const [incidentes] = await db.execute(
       `SELECT 
           i.id AS id_incidente,
           i.hora AS hora_incidente,
@@ -1313,7 +1319,7 @@ app.get("/dowpdf/:idturno", async (req, res) => {
   const { idturno } = req.params;
 
   try {
-    const [infoTurno] = await pool.execute(
+    const [infoTurno] = await db.execute(
       `SELECT t.id, u.nombres AS conductor, v.placa AS vehiculo
        FROM turnos t
        JOIN vehiculos v ON v.id = t.fkidvehiculo
@@ -1326,7 +1332,7 @@ app.get("/dowpdf/:idturno", async (req, res) => {
       return res.status(404).json({ error: "Turno no encontrado" });
     }
 
-    const [puntos] = await pool.execute(
+    const [puntos] = await db.execute(
       `SELECT ps.nombre AS punto_marcado, m.fecha AS hora_marcado,
               m.diferencia, m.latitud, m.longitud
        FROM marcados m
@@ -1337,7 +1343,7 @@ app.get("/dowpdf/:idturno", async (req, res) => {
       [idturno]
     );
 
-    const [incidentes] = await pool.execute(
+    const [incidentes] = await db.execute(
       `SELECT i.hora AS hora_incidente, i.descripcion AS descripcion_incidente,
               i.foto AS foto_incidente, i.latitud, i.longitud
        FROM incidentes i
