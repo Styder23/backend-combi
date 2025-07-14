@@ -703,7 +703,7 @@ app.post("/calcular-diferencia", async (req, res) => {
       });
     }
 
-    // 2. Obtener tiempo programado del punto - CAMBIO: db.promise().execute() → db.execute()
+    // 2. Obtener tiempo programado del punto 
     console.log("Consultando turno_horas con ID:", fkidturnohora);
     
     const [turnoHoraResult] = await db.execute(
@@ -1011,7 +1011,6 @@ app.get('/puntos-turno', async (req, res) => {
       });
     }
 
-    // Usar el mismo método que en otros endpoints para consistencia
     const queryPuntos = `
       SELECT 
         p.id, 
@@ -1026,7 +1025,6 @@ app.get('/puntos-turno', async (req, res) => {
       WHERE th.fkidturno = ?
       ORDER BY p.orden ASC`;
 
-    // CAMBIO: db.promise().execute() → db.execute()
     const [puntos] = await db.execute(queryPuntos, [idturno]);
     
     console.log(`Puntos encontrados para turno ${idturno}:`, puntos.length);
