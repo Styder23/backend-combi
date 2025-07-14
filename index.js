@@ -260,10 +260,12 @@ app.get("/turnos", async (req, res) => {
 
 //RUTA PARA OBTENER UN TURNO ACTIVO:
 app.get("/turno-activo", async (req, res) => {
+  let connection;
   try {
     const { id } = req.query;
     console.log("🔍 Buscando turno activo para vehículo:", id);
 
+    // 1. Validar ID del vehículo
     if (!id || isNaN(id)) {
       return res.status(400).json({
         success: false,
@@ -271,88 +273,104 @@ app.get("/turno-activo", async (req, res) => {
       });
     }
 
-    // 1. Consultar turnos pendientes del día
-    const queryTurnosPendientes = `
+    // 2. Obtener conexión del pool
+    connection = await pool.getConnection();
+
+    // 3. Consultar todos los turnos del día (no solo pendientes)
+    const queryTurnosDelDia = `
       SELECT 
         t.id,
         DATE_FORMAT(t.hora, '%Y-%m-%d %H:%i:%s') AS hora_programada,
         t.fkidestadoturno,
-        TIMESTAMPDIFF(MINUTE, NOW(), t.hora) AS minutos_restantes
+        TIMESTAMPDIFF(MINUTE, NOW(), t.hora) AS minutos_restantes,
+        TIMESTAMPDIFF(HOUR, t.hora, NOW()) AS horas_retraso
       FROM turnos t
       WHERE t.fkidvehiculo = ?
         AND DATE(t.hora) = CURDATE()
-        AND t.fkidestadoturno = 3
-      ORDER BY t.hora ASC
-    `;
+      ORDER BY t.hora ASC`;
 
-    const [turnosPendientes] = await db.execute(queryTurnosPendientes, [id]);
+    const [turnosDelDia] = await connection.execute(queryTurnosDelDia, [id]);
 
+    // 4. Verificar si no hay turnos asignados para hoy
+    if (turnosDelDia.length === 0) {
+      return res.json({
+        success: false,
+        message: "No tiene turnos asignados para hoy",
+        data: {
+          sin_turnos: true
+        }
+      });
+    }
+
+    // 5. Verificar si hay un turno en curso (estado = 2)
+    const turnoEnCurso = turnosDelDia.find(turno => turno.fkidestadoturno === 2);
+    if (turnoEnCurso) {
+      return res.json({
+        success: false,
+        message: "Ya existe un turno en curso",
+        data: {
+          turno_en_curso: turnoEnCurso.id
+        }
+      });
+    }
+
+    // 6. Filtrar solo turnos pendientes (estado = 3)
+    const turnosPendientes = turnosDelDia.filter(turno => turno.fkidestadoturno === 3);
+
+    // 7. Procesar turnos pendientes
     let turnoElegido = null;
     let diferenciaHoras = 0;
     const turnosADesertar = [];
 
     for (const turno of turnosPendientes) {
-      const horaTurno = moment.tz(turno.hora_programada, "America/Lima");
-      diferenciaHoras = moment.tz("America/Lima").diff(horaTurno, 'hours');
-
-      if (diferenciaHoras > 2) {
+      const horaTurno = moment(turno.hora_programada);
+      diferenciaHoras = moment().diff(horaTurno, 'hours');
+      
+      // Si el turno tiene más de 1 hora de retraso, marcarlo como DESERTO
+      if (diferenciaHoras > 1) {
         console.log(`⏳ Turno ${turno.id} con ${diferenciaHoras} horas de retraso - Marcando como DESERTO`);
         turnosADesertar.push(turno.id);
         continue;
       }
-
+      
+      // Si encontramos un turno dentro del rango válido
       if (!turnoElegido) {
         turnoElegido = turno;
       }
     }
 
-    // 2. Marcar turnos desertados
+    // 8. Actualizar turnos desertados (si los hay)
     if (turnosADesertar.length > 0) {
       const queryDesertarTurnos = `
-        UPDATE turnos
-        SET fkidestadoturno = 5
-        WHERE id IN (?)
-      `;
-      await db.query(queryDesertarTurnos, [turnosADesertar]);
+        UPDATE turnos 
+        SET fkidestadoturno = 5 /* DESERTO */ 
+        WHERE id IN (?)`;
+      
+      await connection.query(queryDesertarTurnos, [turnosADesertar]);
     }
 
-    // 3. No hay turno válido
+    // 9. Si no hay turnos válidos después del procesamiento
     if (!turnoElegido) {
-      return res.status(404).json({
-        success: false,
-        message: "No hay turnos pendientes dentro del margen horario permitido"
-      });
-    }
-
-    // 4. Verificar si ya hay turno en curso
-    const queryTurnoEnCurso = `
-      SELECT id FROM turnos 
-      WHERE fkidvehiculo = ? 
-        AND fkidestadoturno = 2
-        AND DATE(hora) = CURDATE()
-    `;
-    const [enCurso] = await db.execute(queryTurnoEnCurso, [id]);
-
-    if (enCurso.length > 0) {
       return res.json({
         success: false,
-        message: "Ya existe un turno en curso",
+        message: "No hay turnos pendientes dentro del margen horario permitido",
         data: {
-          turno_en_curso: enCurso[0].id
+          sin_turnos_validos: true
         }
       });
     }
 
-    // 5. Retornar turno listo para iniciar
+    // 10. Retornar el turno elegido
     res.json({
       success: true,
       data: {
         turno: {
           id: turnoElegido.id,
           hora_programada: turnoElegido.hora_programada,
-          estado: turnoElegido.fkidestadoturno
+          estado: turnoElegido.fkidestadoturno,
+          minutos_restantes: turnoElegido.minutos_restantes
         },
-        puede_iniciar: true,
+        puede_iniciar: turnoElegido.minutos_restantes <= 0, // Solo si ya es hora o pasó
         retraso_horas: diferenciaHoras
       }
     });
@@ -363,11 +381,17 @@ app.get("/turno-activo", async (req, res) => {
       success: false,
       message: "Error al buscar turno activo"
     });
+  } finally {
+    // 11. Liberar la conexión de vuelta al pool
+    if (connection) {
+      connection.release();
+    }
   }
 });
 
 // RUTA PARA INICIAR VIAJE
 app.post("/iniciar-viaje", async (req, res) => {
+  let connection;
   try {
     const { idturno, idvehiculo } = req.body;
 
@@ -379,20 +403,23 @@ app.post("/iniciar-viaje", async (req, res) => {
       });
     }
 
-    // 1. Obtener información completa del turno
+    // 1. Obtener conexión del pool
+    connection = await pool.getConnection();
+
+    // 2. Obtener información completa del turno
     const queryGetTurno = `
       SELECT 
         t.id,
         t.hora AS hora_programada,
         t.fkidestadoturno,
         e.nombre AS estado,
-        TIMESTAMPDIFF(HOUR, t.hora, NOW()) AS horas_retraso
+        TIMESTAMPDIFF(HOUR, t.hora, NOW()) AS horas_retraso,
+        TIMESTAMPDIFF(MINUTE, NOW(), t.hora) AS minutos_hasta_turno
       FROM turnos t
       JOIN estadoturnos e ON t.fkidestadoturno = e.id
       WHERE t.id = ? AND t.fkidvehiculo = ?`;
 
-    // CAMBIO: db.promise().execute() → db.execute()
-    const [turnos] = await db.execute(queryGetTurno, [idturno, idvehiculo]);
+    const [turnos] = await connection.execute(queryGetTurno, [idturno, idvehiculo]);
 
     if (turnos.length === 0) {
       return res.status(404).json({
@@ -405,7 +432,7 @@ app.post("/iniciar-viaje", async (req, res) => {
     const horaTurno = moment(turno.hora_programada).tz("America/Lima");
     const ahora = moment().tz("America/Lima");
 
-    // 2. Validar estado actual del turno
+    // 3. Validar estado actual del turno
     if (turno.fkidestadoturno === 5) { // DESERTO
       return res.status(403).json({
         success: false,
@@ -427,10 +454,23 @@ app.post("/iniciar-viaje", async (req, res) => {
       });
     }
 
-    // 3. Validar límite de 2 horas de retraso
+    // 4. Validar que no sea antes de la hora programada
+    const minutosDiferencia = horaTurno.diff(ahora, 'minutes');
+    if (minutosDiferencia > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Aún faltan ${minutosDiferencia} minutos para la hora programada (${horaTurno.format("HH:mm")})`,
+        hora_programada: horaTurno.format("YYYY-MM-DD HH:mm:ss"),
+        hora_actual: ahora.format("YYYY-MM-DD HH:mm:ss"),
+        minutos_restantes: minutosDiferencia,
+        puede_iniciar: false
+      });
+    }
+
+    // 5. Validar límite de 2 horas de retraso
     if (turno.horas_retraso > 2) {
-      // CAMBIO: db.promise().execute() → db.query()
-      await db.query(
+      // Actualizar estado a DESERTO
+      await connection.execute(
         `UPDATE turnos SET fkidestadoturno = 5 WHERE id = ?`,
         [idturno]
       );
@@ -441,21 +481,8 @@ app.post("/iniciar-viaje", async (req, res) => {
       });
     }
 
-    // 4. Validar que no sea antes de la hora programada
-    const minutosDiferencia = horaTurno.diff(ahora, 'minutes');
-    if (minutosDiferencia > 0) {
-      return res.status(400).json({
-        success: false,
-        message: `No se puede iniciar el viaje antes de la hora programada (${horaTurno.format("HH:mm")})`,
-        hora_programada: horaTurno.format("YYYY-MM-DD HH:mm:ss"),
-        hora_actual: ahora.format("YYYY-MM-DD HH:mm:ss"),
-        minutos_restantes: minutosDiferencia
-      });
-    }
-
-    // 5. Actualizar estado del turno a EN RUTA (2)
-    // CAMBIO: db.promise().execute() → db.query()
-    await db.query(
+    // 6. Actualizar estado del turno a EN RUTA (2)
+    await connection.execute(
       `UPDATE turnos SET fkidestadoturno = 2 WHERE id = ?`,
       [idturno]
     );
@@ -468,7 +495,7 @@ app.post("/iniciar-viaje", async (req, res) => {
         hora_programada: horaTurno.format("HH:mm"),
         hora_inicio: ahora.format("HH:mm"),
         estado: "EN RUTA",
-        retraso_horas: turno.horas_retraso
+        retraso_horas: turno.horas_retraso || 0
       }
     });
 
@@ -478,6 +505,104 @@ app.post("/iniciar-viaje", async (req, res) => {
       success: false,
       message: "Error interno al iniciar el viaje",
     });
+  } finally {
+    // 7. Liberar la conexión de vuelta al pool
+    if (connection) {
+      connection.release();
+    }
+  }
+});
+
+// RUTA PARA LOS VIAJES ACTIVOS
+app.get('/viaje-activo', async (req, res) => {
+  const { idvehiculo } = req.query;
+
+  if (!idvehiculo) {
+    return res.status(400).json({ success: false, message: 'Falta el id del vehículo' });
+  }
+
+  let connection;
+  try {
+    // 1. Obtener conexión del pool
+    connection = await pool.getConnection();
+
+    // 2. Consultar turno activo
+    const [turno] = await connection.query(`
+      SELECT * FROM turnos
+      WHERE fkidvehiculo = ? AND fkidestadoturno = 2
+      ORDER BY hora DESC
+      LIMIT 1
+    `, [idvehiculo]);
+
+    if (turno.length === 0) {
+      return res.json({ success: true, viaje_activo: false });
+    }
+
+    return res.json({ success: true, viaje_activo: true, turno: turno[0] });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Error al consultar', error: err.message });
+  } finally {
+    // 3. Liberar la conexión de vuelta al pool
+    if (connection) {
+      connection.release();
+    }
+  }
+});
+
+// RUTA PARA CARGAR LOS PUNTOS MARCADOS DEL VIAJE ACTIVO
+app.get('/puntos-marcados', async (req, res) => {
+  const { idvehiculo } = req.query;
+
+  let connection;
+  try {
+    // 1. Obtener conexión del pool
+    connection = await pool.getConnection();
+
+    // 2. Obtener turno activo
+    const [turno] = await connection.query(`
+      SELECT id FROM turnos 
+      WHERE fkidvehiculo = ? AND fkidestadoturno = 2
+      LIMIT 1
+    `, [idvehiculo]);
+
+    if (!turno.length) {
+      return res.json({ success: true, puntos: [] });
+    }
+
+    // 3. Obtener todos los puntos del turno
+    const [puntosTurno] = await connection.query(`
+      SELECT p.id, p.nombre, p.latitud, p.longitud, p.orden,
+          m.id AS id_marcado, m.fecha, m.latitud AS lat_marcado, 
+          m.longitud AS lon_marcado, m.diferencia,
+          th.id AS idTurnoHora 
+      FROM turno_horas th
+      JOIN puntos p ON th.fkidpunto = p.id
+      LEFT JOIN marcados m ON th.id = m.fkidturnohora
+      WHERE th.fkidturno = ?
+      ORDER BY p.orden
+    `, [turno[0].id]);
+
+    // 4. Formatear respuesta
+    const puntosFormateados = puntosTurno.map(p => ({
+      id: p.id,
+      nombre: p.nombre,
+      latitud: p.latitud,
+      longitud: p.longitud,
+      orden: p.orden,
+      estado: p.id_marcado ? "marcado" : "sin marcar",
+      hora: p.fecha,
+      diferencia: p.diferencia,
+      idTurnoHora: p.idTurnoHora
+    }));
+
+    res.json({ success: true, puntos: puntosFormateados });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  } finally {
+    // 5. Liberar la conexión de vuelta al pool
+    if (connection) {
+      connection.release();
+    }
   }
 });
 
@@ -819,7 +944,7 @@ app.post("/marcarpunto", async (req, res) => {
       });
     }
 
-    // 1. Verificar turno_hora - CAMBIO: db.promise().execute() → db.execute()
+    // 1. Verificar turno_hora 
     const [turnoHora] = await db.execute(
       `SELECT th.id, t.hora AS hora_salida_turno
        FROM turno_horas th
@@ -957,50 +1082,63 @@ app.get("/incidentes_por_turno/:idTurno", async (req, res) => {
 
 // RUTA PARA OMITIR PUNTO DE MARCADO
 app.post("/omitir_punto", async (req, res) => {
+  let connection;
   try {
-    const { fk_idturno, fk_idpunto, fk_idincidente } = req.body;
+    const { fk_idturno, fk_idpunto, fkidestadomarcado, celular = '', observacion = '' } = req.body;
 
     console.log("========== INICIANDO REGISTRO DE OMISIÓN ==========");
     console.log("Datos recibidos en req.body:", req.body);
 
-    // Verificar que los datos requeridos estén presentes
-    if (!fk_idturno || !fk_idpunto || !fk_idincidente) {
-      console.warn("Faltan datos requeridos:", { fk_idturno, fk_idpunto, fk_idincidente });
+    if (!fk_idturno || !fk_idpunto || !fkidestadomarcado) {
+      console.warn("Faltan datos requeridos:", { fk_idturno, fk_idpunto, fkidestadomarcado });
       return res.status(400).json({
         success: false,
         message: "Faltan datos requeridos",
-        datos_recibidos: { fk_idturno, fk_idpunto, fk_idincidente },
+        datos_recibidos: { fk_idturno, fk_idpunto, fkidestadomarcado },
       });
     }
 
-    console.log("Datos validados. Procediendo con la inserción...");
+    // 1. Obtener conexión del pool
+    connection = await pool.getConnection();
 
-    const queryOmitirPunto = `
-      INSERT INTO marcaciones (hora_marcado, longitud, latitud, diferencia, fk_idturno, fk_idpunto, fk_idincidente, omitido)
-      VALUES (NOW(), NULL, NULL, NULL, ?, ?, ?, 1)
+    // 2. Buscar el ID de turno_hora relacionado con el turno y el punto
+    const [turnoHoraResult] = await connection.query(`
+      SELECT id FROM turno_horas
+      WHERE fkidturno = ? AND fkidpunto = ?
+      LIMIT 1
+    `, [fk_idturno, fk_idpunto]);
+
+    if (turnoHoraResult.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "No se encontró una coincidencia en turno_hora",
+      });
+    }
+
+    const fkidturnohora = turnoHoraResult[0].id;
+
+    // 3. Insertar registro de omisión
+    const insertQuery = `
+      INSERT INTO marcados (fecha, celular, longitud, latitud, observacion, diferencia, estado, fkidestadomarcado, fkidturnohora)
+      VALUES (NOW(), ?, NULL, NULL, ?, NULL, 0, ?, ?)
     `;
 
-    console.log("Ejecutando consulta SQL...");
-    console.log("Query:", queryOmitirPunto);
-    console.log("Valores:", [fk_idturno, fk_idpunto]);
-
-    const [result] = await db.promise().execute(queryOmitirPunto, [
-      fk_idturno,
-      fk_idpunto,
-      fk_idincidente,
+    const [insertResult] = await connection.execute(insertQuery, [
+      celular,
+      observacion,
+      fkidestadomarcado,
+      fkidturnohora
     ]);
 
-    console.log("Resultado de la consulta:", result);
-
-    if (result.affectedRows === 1) {
-      console.log("✅ Omisión de punto registrada exitosamente.");
+    if (insertResult.affectedRows === 1) {
+      console.log("✅ Punto omitido registrado correctamente.");
       return res.json({
         success: true,
         message: "Omisión de punto registrada exitosamente",
-        idmarcacion: result.insertId,
+        idmarcado: insertResult.insertId,
       });
     } else {
-      console.error("⚠️ Error: No se afectaron filas en la base de datos.");
+      console.error("⚠️ No se insertó el registro.");
       return res.status(500).json({
         success: false,
         message: "Error al registrar la omisión de punto",
@@ -1012,13 +1150,21 @@ app.post("/omitir_punto", async (req, res) => {
       success: false,
       message: "Error interno del servidor",
     });
+  } finally {
+    // 4. Liberar la conexión de vuelta al pool
+    if (connection) {
+      connection.release();
+    }
   }
 });
 
 // Finalizar turno
 app.post("/finalizar-turno", async (req, res) => {
+  let connection;
   try {
     const { idTurno } = req.body;
+
+    console.log("🔚 Finalizando turno:", idTurno);
 
     if (!idTurno) {
       return res.status(400).json({
@@ -1027,23 +1173,61 @@ app.post("/finalizar-turno", async (req, res) => {
       });
     }
 
-    // Actualizar estado del turno a FINALIZADO (4)
-    await pool.execute(
+    // 1. Obtener conexión del pool
+    connection = await pool.getConnection();
+
+    // 2. Verificar que el turno existe y está en estado EN RUTA (2)
+    const queryVerificar = `
+      SELECT id, fkidestadoturno 
+      FROM turnos 
+      WHERE id = ?`;
+    
+    const [turnoInfo] = await connection.execute(queryVerificar, [idTurno]);
+
+    if (turnoInfo.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Turno no encontrado"
+      });
+    }
+
+    const turno = turnoInfo[0];
+
+    if (turno.fkidestadoturno !== 2) {
+      return res.status(400).json({
+        success: false,
+        message: "El turno no está en estado EN RUTA"
+      });
+    }
+
+    // 3. Actualizar estado del turno a FINALIZADO (4)
+    await connection.execute(
       `UPDATE turnos SET fkidestadoturno = 4 WHERE id = ?`,
       [idTurno]
     );
 
+    console.log("✅ Turno finalizado exitosamente:", idTurno);
+
     res.json({
       success: true,
-      message: "Turno finalizado correctamente"
+      message: "Turno finalizado correctamente",
+      data: {
+        id_turno: idTurno,
+        hora_finalizacion: new Date().toISOString()
+      }
     });
 
   } catch (error) {
-    console.error("Error al finalizar turno:", error);
+    console.error("💥 Error al finalizar turno:", error);
     res.status(500).json({
       success: false,
-      message: "Error al finalizar el turno"
+      message: "Error interno al finalizar el turno"
     });
+  } finally {
+    // 4. Liberar la conexión de vuelta al pool
+    if (connection) {
+      connection.release();
+    }
   }
 });
 // Ruta para la vista previa y descarga del historial de rrecorrido
