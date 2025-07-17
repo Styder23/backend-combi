@@ -37,7 +37,6 @@ app.get("/", (req, res) => {
 });
 
 // NUEVA RUTA PARA EL LOGIN:
-
 app.post("/login", async (req, res) => {
   const { username, password } = req.body;
   console.log("Datos recibidos en la solicitud POST /login:", { username });
