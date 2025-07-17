@@ -34,8 +34,8 @@ const storage = multer.diskStorage({
 
 const upload = multer({ storage });
 
-  // Endpoint para subir la foto de un incidente
-  router.post("/reportar_incidente", upload.single("foto_incidente"), async (req, res) => {
+// Endpoint para subir la foto de un incidente
+router.post("/reportar_incidente", upload.single("foto_incidente"), async (req, res) => {
     try {
       const { descripcion, latitud, longitud, fkidturno } = req.body;
 
@@ -83,7 +83,7 @@ const upload = multer({ storage });
         error: error.message
       });
     }
-  });
+});
 
 // Endpoint para subir la foto de perfil
 router.post("/subir_foto_perfil", upload.single("foto_perfil"), async (req, res) => {
